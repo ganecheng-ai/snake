@@ -7,6 +7,8 @@
 import pygame
 import random
 import sys
+import json
+import os
 
 # 初始化 pygame
 pygame.init()
@@ -152,7 +154,9 @@ class Game:
         self.snake = Snake()
         self.food = Food()
         self.score = 0
-        self.high_score = 0
+        # 加载持久化的最高分
+        game_data = load_game_data()
+        self.high_score = game_data.get("high_score", 0)
         self.state = "MENU"  # MENU, PLAYING, PAUSED, GAME_OVER
         self.button_rect = None
 
@@ -373,6 +377,9 @@ class Game:
 
         # 检测碰撞
         if self.snake.check_collision():
+            # 游戏结束时保存最高分
+            if self.score > load_game_data().get("high_score", 0):
+                save_game_data({"high_score": self.score})
             self.state = "GAME_OVER"
 
     def draw(self):
@@ -412,3 +419,27 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# 数据持久化相关
+DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "snake_data.json")
+
+
+def load_game_data():
+    """加载游戏数据"""
+    try:
+        if os.path.exists(DATA_FILE):
+            with open(DATA_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception as e:
+        print(f"加载数据失败：{e}")
+    return {"high_score": 0}
+
+
+def save_game_data(data):
+    """保存游戏数据"""
+    try:
+        with open(DATA_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"保存数据失败：{e}")
