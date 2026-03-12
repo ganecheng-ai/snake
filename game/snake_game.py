@@ -30,7 +30,16 @@ GRID_WIDTH = 24                      # 网格宽度（格子数）
 GRID_HEIGHT = 20                     # 网格高度（格子数）
 SCREEN_WIDTH = CELL_SIZE * GRID_WIDTH
 SCREEN_HEIGHT = CELL_SIZE * GRID_HEIGHT + 60  # 额外空间用于显示分数
-FPS = 10                             # 游戏帧率（控制蛇的速度）
+
+# 难度配置
+DIFFICULTY_SETTINGS = {
+    "简单": {"fps": 8, "color": (100, 200, 100)},
+    "中等": {"fps": 12, "color": (200, 180, 100)},
+    "困难": {"fps": 18, "color": (200, 100, 100)},
+}
+DEFAULT_DIFFICULTY = "中等"
+
+FPS = 10  # 默认值，会根据难度动态调整
 
 # 方向定义
 UP = (0, -1)
@@ -64,6 +73,115 @@ def get_chinese_font(size):
         return pygame.font.Font(None, size)
     except:
         return pygame.font.SysFont('arial', size)
+
+
+class SoundManager:
+    """音效管理器 - 使用 pygame 合成器生成音效"""
+
+    def __init__(self):
+        self.enabled = True
+        self.sample_rate = 22050
+        try:
+            pygame.mixer.init(self.sample_rate, -16, 1, 512)
+            self.enabled = True
+        except:
+            self.enabled = False
+            print("音效初始化失败，将静音运行")
+
+    def generate_tone(self, frequency, duration, volume=0.5, wave_type='sine'):
+        """生成指定频率的音调"""
+        if not self.enabled:
+            return None
+
+        n_samples = int(self.sample_rate * duration)
+        samples = []
+
+        for i in range(n_samples):
+            t = i / self.sample_rate
+            if wave_type == 'sine':
+                value = 32767 * volume * (0.5 * (1 + (i / n_samples) * -1)) * (2 * 3.14159 * frequency * t)
+            else:
+                value = 32767 * volume * (1 if (int(frequency * t) % 2 == 0) else -1)
+            samples.append(int(max(-32768, min(32767, value))))
+
+        sample = pygame.sndarray.make_sound(pygame.sndarray.array(samples))
+        return sample
+
+    def create_eat_sound(self):
+        """创建吃食物的音效 - 高音滴声"""
+        if not self.enabled:
+            return None
+        duration = 0.1
+        sample_rate = 22050
+        n_samples = int(sample_rate * duration)
+        samples = []
+        for i in range(n_samples):
+            t = i / sample_rate
+            value = int(32767 * 0.3 * (1 - i/n_samples) * (0.5 + 0.5 * (2 * 3.14159 * 880 * t)))
+            samples.append(max(-32768, min(32767, value)))
+        return pygame.sndarray.make_sound(pygame.sndarray.array(samples))
+
+    def create_crash_sound(self):
+        """创建撞墙的音效 - 低沉噪音"""
+        if not self.enabled:
+            return None
+        duration = 0.3
+        sample_rate = 22050
+        n_samples = int(sample_rate * duration)
+        samples = []
+        for i in range(n_samples):
+            t = i / sample_rate
+            noise = random.uniform(-0.5, 0.5)
+            value = int(32767 * 0.4 * (1 - i/n_samples) * noise)
+            samples.append(max(-32768, min(32767, value)))
+        return pygame.sndarray.make_sound(pygame.sndarray.array(samples))
+
+    def create_gameover_sound(self):
+        """创建游戏结束的音效 - 下降音调"""
+        if not self.enabled:
+            return None
+        duration = 0.5
+        sample_rate = 22050
+        n_samples = int(sample_rate * duration)
+        samples = []
+        for i in range(n_samples):
+            t = i / sample_rate
+            freq = 440 * (1 - t/duration) + 200
+            value = int(32767 * 0.3 * (1 - i/n_samples) * (2 * 3.14159 * freq * t))
+            samples.append(max(-32768, min(32767, value)))
+        return pygame.sndarray.make_sound(pygame.sndarray.array(samples))
+
+    def create_button_click_sound(self):
+        """创建按钮点击音效 - 清脆短音"""
+        if not self.enabled:
+            return None
+        duration = 0.05
+        sample_rate = 22050
+        n_samples = int(sample_rate * duration)
+        samples = []
+        for i in range(n_samples):
+            t = i / sample_rate
+            value = int(32767 * 0.3 * (2 * 3.14159 * 1200 * t))
+            samples.append(max(-32768, min(32767, value)))
+        return pygame.sndarray.make_sound(pygame.sndarray.array(samples))
+
+
+class EffectManager:
+    """特效管理器 - 处理视觉特效"""
+
+    def __init__(self):
+        self.food_pulse = 0
+        self.food_pulse_dir = 1
+
+    def update(self):
+        """更新特效状态"""
+        self.food_pulse += 0.1 * self.food_pulse_dir
+        if self.food_pulse > 1 or self.food_pulse < 0:
+            self.food_pulse_dir *= -1
+
+    def get_food_radius(self, base_radius):
+        """获取带脉冲效果的食物半径"""
+        return base_radius + self.food_pulse * 2
 
 
 class Snake:
@@ -157,8 +275,20 @@ class Game:
         # 加载持久化的最高分
         game_data = load_game_data()
         self.high_score = game_data.get("high_score", 0)
-        self.state = "MENU"  # MENU, PLAYING, PAUSED, GAME_OVER
+        self.selected_difficulty = DEFAULT_DIFFICULTY
+        self.state = "MENU"  # MENU, DIFFICULTY_SELECT, PLAYING, PAUSED, GAME_OVER
         self.button_rect = None
+        self.difficulty_buttons = []
+        # 初始化和创建音效
+        self.sound_manager = SoundManager()
+        self.sound_eat = self.sound_manager.create_eat_sound()
+        self.sound_crash = self.sound_manager.create_crash_sound()
+        self.sound_gameover = self.sound_manager.create_gameover_sound()
+        self.sound_click = self.sound_manager.create_button_click_sound()
+        # 特效管理器
+        self.effect_manager = EffectManager()
+        # 难度选择界面按钮
+        self.back_button_rect = None
 
     def draw_grid(self):
         """绘制背景网格"""
@@ -202,15 +332,21 @@ class Game:
     def draw_food(self):
         """绘制食物"""
         x, y = self.food.position
-        # 绘制圆形食物
+        # 更新特效
+        self.effect_manager.update()
+        # 绘制圆形食物（带脉冲效果）
         center = (
             x * CELL_SIZE + CELL_SIZE // 2,
             y * CELL_SIZE + 42 + CELL_SIZE // 2
         )
-        pygame.draw.circle(self.screen, COLOR_FOOD, center, CELL_SIZE // 2 - 2)
+        radius = self.effect_manager.get_food_radius(CELL_SIZE // 2 - 2)
+        pygame.draw.circle(self.screen, COLOR_FOOD, center, int(radius))
         # 添加高光效果
         highlight_pos = (center[0] - 4, center[1] - 4)
         pygame.draw.circle(self.screen, (255, 150, 150), highlight_pos, 4)
+        # 添加外圈光晕效果
+        glow_radius = int(radius + 4 + self.effect_manager.food_pulse * 3)
+        pygame.draw.circle(self.screen, (255, 100, 100, 100), center, glow_radius, 2)
 
     def draw_score(self):
         """绘制分数"""
@@ -228,13 +364,42 @@ class Game:
 
         # 游戏标题
         title = self.font_large.render("贪吃蛇游戏", True, COLOR_TEXT)
-        title_rect = title.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 80))
+        title_rect = title.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 120))
         self.screen.blit(title, title_rect)
+
+        # 显示当前选择的难度
+        diff_color = DIFFICULTY_SETTINGS[self.selected_difficulty]["color"]
+        diff_text = self.font_medium.render(f"当前难度：{self.selected_difficulty}", True, diff_color)
+        diff_rect = diff_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 60))
+        self.screen.blit(diff_text, diff_rect)
+
+        # 难度选择按钮
+        self.difficulty_buttons = []
+        button_width = 100
+        button_height = 40
+        start_x = SCREEN_WIDTH // 2 - (len(DIFFICULTY_SETTINGS) * (button_width + 10)) // 2
+        mouse_pos = pygame.mouse.get_pos()
+
+        for i, (diff_name, settings) in enumerate(DIFFICULTY_SETTINGS.items()):
+            btn_rect = pygame.Rect(
+                start_x + i * (button_width + 10),
+                SCREEN_HEIGHT // 2 - 20,
+                button_width,
+                button_height
+            )
+            self.difficulty_buttons.append((btn_rect, diff_name))
+            btn_color = settings["color"]
+            if btn_rect.collidepoint(mouse_pos):
+                btn_color = tuple(min(255, c + 50) for c in btn_color)
+            pygame.draw.rect(self.screen, btn_color, btn_rect, border_radius=8)
+            diff_text = self.font_small.render(diff_name, True, COLOR_TEXT)
+            text_rect = diff_text.get_rect(center=btn_rect.center)
+            self.screen.blit(diff_text, text_rect)
 
         # 开始按钮
         self.button_rect = pygame.Rect(
             SCREEN_WIDTH // 2 - 100,
-            SCREEN_HEIGHT // 2,
+            SCREEN_HEIGHT // 2 + 40,
             200,
             50
         )
@@ -254,7 +419,7 @@ class Game:
         ]
         for i, inst in enumerate(instructions):
             inst_surface = self.font_small.render(inst, True, COLOR_TEXT)
-            inst_rect = inst_surface.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 80 + i * 30))
+            inst_rect = inst_surface.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 120 + i * 30))
             self.screen.blit(inst_surface, inst_rect)
 
     def draw_pause(self):
@@ -316,6 +481,8 @@ class Game:
                 if self.state == "MENU":
                     if event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
                         self.start_game()
+                    elif event.key == pygame.K_ESCAPE:
+                        return False
 
                 elif self.state == "PLAYING":
                     if event.key in (pygame.K_UP, pygame.K_w):
@@ -345,10 +512,19 @@ class Game:
 
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 mouse_pos = pygame.mouse.get_pos()
-                if self.button_rect and self.button_rect.collidepoint(mouse_pos):
-                    if self.state == "MENU":
+                # 检查难度按钮点击
+                if self.state == "MENU":
+                    for btn_rect, diff_name in self.difficulty_buttons:
+                        if btn_rect.collidepoint(mouse_pos):
+                            self.selected_difficulty = diff_name
+                            if self.sound_click:
+                                self.sound_click.play()
+                            break
+                    # 检查开始按钮点击
+                    if self.button_rect and self.button_rect.collidepoint(mouse_pos):
                         self.start_game()
-                    elif self.state == "GAME_OVER":
+                elif self.state == "GAME_OVER":
+                    if self.button_rect and self.button_rect.collidepoint(mouse_pos):
                         self.start_game()
 
         return True
@@ -359,6 +535,9 @@ class Game:
         self.food.spawn(self.snake.body)
         self.score = 0
         self.state = "PLAYING"
+        # 根据难度设置 FPS
+        global FPS
+        FPS = DIFFICULTY_SETTINGS[self.selected_difficulty]["fps"]
 
     def update(self):
         """更新游戏状态"""
@@ -374,13 +553,22 @@ class Game:
             if self.score > self.high_score:
                 self.high_score = self.score
             self.food.spawn(self.snake.body)
+            # 播放吃食物音效
+            if self.sound_eat:
+                self.sound_eat.play()
 
         # 检测碰撞
         if self.snake.check_collision():
+            # 播放撞墙音效
+            if self.sound_crash:
+                self.sound_crash.play()
             # 游戏结束时保存最高分
             if self.score > load_game_data().get("high_score", 0):
                 save_game_data({"high_score": self.score})
             self.state = "GAME_OVER"
+            # 播放游戏结束音效
+            if self.sound_gameover:
+                self.sound_gameover.play()
 
     def draw(self):
         """绘制游戏画面"""
