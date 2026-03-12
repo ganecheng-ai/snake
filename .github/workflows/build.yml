@@ -73,14 +73,14 @@ jobs:
       if: runner.os == 'Linux'
       working-directory: dist_release
       run: |
-        tar -czvf SnakeGame-${{ env.OS }}-${{ env.ARCH }}.tar.gz SnakeGame-${{ env.OS }}-${{ env.ARCH }}
+        tar -czvf SnakeGame-linux-x86_64.tar.gz SnakeGame-linux-x86_64
 
     - name: Create DMG for macOS
       if: runner.os == 'macOS'
       working-directory: dist_release
       run: |
         # Create a DMG file for the .app bundle
-        hdiutil create -volname "SnakeGame" -srcfolder "SnakeGame.app" -ov -format UDZO SnakeGame-${{ env.OS }}-${{ env.ARCH }}.dmg
+        hdiutil create -volname "SnakeGame" -srcfolder "SnakeGame.app" -ov -format UDZO SnakeGame-macos-x86_64.dmg
 
     - name: Create zip for Windows
       if: runner.os == 'Windows'
@@ -88,20 +88,25 @@ jobs:
       run: |
         Compress-Archive -Path SnakeGame-windows-x86_64.exe -DestinationPath SnakeGame-windows-x86_64.zip
 
-    - name: Generate SHA256 checksums
+    - name: Generate SHA256 checksums (Windows)
+      if: runner.os == 'Windows'
       working-directory: dist_release
       run: |
-        if [ "$RUNNER_OS" == "Windows" ]; then
-          # Windows: Use PowerShell Get-FileHash for proper format
-          Get-FileHash SnakeGame-windows-x86_64.zip -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  $($_.Path -replace '^.*/', '')" } > checksums.txt
-        elif [ "$RUNNER_OS" == "Linux" ]; then
-          sha256sum SnakeGame-${{ env.OS }}-${{ env.ARCH }}.tar.gz > checksums.txt
-        elif [ "$RUNNER_OS" == "macOS" ]; then
-          shasum -a 256 SnakeGame-${{ env.OS }}-${{ env.ARCH }}.dmg > checksums.txt
-        fi
-      shell: bash
-      env:
-        RUNNER_OS: ${{ runner.os }}
+        $hash = Get-FileHash SnakeGame-windows-x86_64.zip -Algorithm SHA256
+        "$($hash.Hash)  $($hash.Path -replace '^.*/', '')" > checksums.txt
+      shell: pwsh
+
+    - name: Generate SHA256 checksums (Linux)
+      if: runner.os == 'Linux'
+      working-directory: dist_release
+      run: |
+        sha256sum SnakeGame-linux-x86_64.tar.gz > checksums.txt
+
+    - name: Generate SHA256 checksums (macOS)
+      if: runner.os == 'macOS'
+      working-directory: dist_release
+      run: |
+        shasum -a 256 SnakeGame-macos-x86_64.dmg > checksums.txt
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
