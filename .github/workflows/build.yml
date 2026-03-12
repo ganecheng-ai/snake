@@ -55,16 +55,7 @@ jobs:
           # macOS: Use onedir mode with .app bundle for GUI app
           # Create a minimal valid icns file using Python
           mkdir -p icons
-          python3 << 'PYEOF'
-import struct
-# ICNS header: 'icns' + size (big endian)
-# Minimal ICNS with one icon entry (ICON type, 16x16)
-icns_data = b'icns' + struct.pack('>I', 1024)
-# Add empty ICON entry
-icns_data += b'ICON' + struct.pack('>I', 1008) + b'\x00' * 1008
-with open('icons/empty.icns', 'wb') as f:
-    f.write(icns_data)
-PYEOF
+          python3 -c "import struct; icns_data = b'icns' + struct.pack('>I', 1024); icns_data += b'ICON' + struct.pack('>I', 1008) + b'\x00' * 1008; open('icons/empty.icns', 'wb').write(icns_data)"
           pyinstaller --onedir --windowed --name "SnakeGame" \
             --icon=icons/empty.icns \
             --add-data "game/snake_game.py:game" \
