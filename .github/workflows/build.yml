@@ -30,11 +30,20 @@ jobs:
 
     - name: Build executable with PyInstaller
       run: |
-        pyinstaller --onefile --windowed --name "SnakeGame" \
-          --add-data "game/snake_game.py:game" \
-          --icon=NONE \
-          game/snake_game.py
+        if [ "$RUNNER_OS" == "Windows" ]; then
+          pyinstaller --onefile --windowed --name "SnakeGame" \
+            --add-data "game/snake_game.py;game" \
+            --icon=NONE \
+            game/snake_game.py
+        else
+          pyinstaller --onefile --windowed --name "SnakeGame" \
+            --add-data "game/snake_game.py:game" \
+            --icon=NONE \
+            game/snake_game.py
+        fi
       shell: bash
+      env:
+        RUNNER_OS: ${{ runner.os }}
 
     - name: Create distribution directory
       run: |
@@ -79,7 +88,8 @@ jobs:
       working-directory: dist_release
       run: |
         if [ "$RUNNER_OS" == "Windows" ]; then
-          certutil -hashfile SnakeGame-windows-x86_64.zip SHA256 > checksums.txt
+          # Windows: Use PowerShell Get-FileHash for proper format
+          Get-FileHash SnakeGame-windows-x86_64.zip -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  $($_.Path -replace '^.*/', '')" } > checksums.txt
         elif [ "$RUNNER_OS" == "Linux" ]; then
           sha256sum SnakeGame-linux-x86_64.tar.gz > checksums.txt
         elif [ "$RUNNER_OS" == "macOS" ]; then
