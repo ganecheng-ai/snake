@@ -178,9 +178,12 @@ class SoundManager:
 class EffectManager:
     """特效管理器 - 处理视觉特效"""
 
-    def __init__(self):
+    def __init__(self, screen_width, screen_height):
         self.food_pulse = 0
         self.food_pulse_dir = 1
+        self.blur_surface = None
+        self.screen_width = screen_width
+        self.screen_height = screen_height
 
     def update(self):
         """更新特效状态"""
@@ -191,6 +194,17 @@ class EffectManager:
     def get_food_radius(self, base_radius):
         """获取带脉冲效果的食物半径"""
         return base_radius + self.food_pulse * 2
+
+    def create_blur_surface(self, screen):
+        """创建模糊背景 surface"""
+        # 通过缩小再放大来模拟模糊效果
+        small_size = (self.screen_width // 8, self.screen_height // 8)
+        small_surface = pygame.transform.smoothscale(screen, small_size)
+        self.blur_surface = pygame.transform.smoothscale(small_surface, (self.screen_width, self.screen_height))
+
+    def get_blur_surface(self):
+        """获取模糊背景 surface"""
+        return self.blur_surface
 
 
 class Snake:
@@ -295,7 +309,7 @@ class Game:
         self.sound_gameover = self.sound_manager.create_gameover_sound()
         self.sound_click = self.sound_manager.create_button_click_sound()
         # 特效管理器
-        self.effect_manager = EffectManager()
+        self.effect_manager = EffectManager(SCREEN_WIDTH, SCREEN_HEIGHT)
 
     def draw_grid(self):
         """绘制背景网格"""
@@ -431,10 +445,14 @@ class Game:
 
     def draw_pause(self):
         """绘制暂停界面"""
-        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
-        overlay.set_alpha(150)
-        overlay.fill((0, 0, 0))
-        self.screen.blit(overlay, (0, 0))
+        # 使用模糊背景效果
+        if self.effect_manager.blur_surface:
+            self.screen.blit(self.effect_manager.blur_surface, (0, 0))
+        else:
+            overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+            overlay.set_alpha(150)
+            overlay.fill((0, 0, 0))
+            self.screen.blit(overlay, (0, 0))
 
         pause_text = self.font_large.render("游戏暂停", True, COLOR_TEXT)
         text_rect = pause_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2))
@@ -501,6 +519,8 @@ class Game:
                     elif event.key in (pygame.K_RIGHT, pygame.K_d):
                         self.snake.change_direction(RIGHT)
                     elif event.key == pygame.K_p:
+                        # 暂停前创建模糊背景
+                        self.effect_manager.create_blur_surface(self.screen)
                         self.state = "PAUSED"
                     elif event.key == pygame.K_ESCAPE:
                         self.state = "MENU"
