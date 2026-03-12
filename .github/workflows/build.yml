@@ -33,12 +33,15 @@ jobs:
         if [ "$RUNNER_OS" == "Windows" ]; then
           pyinstaller --onefile --windowed --name "SnakeGame" \
             --add-data "game/snake_game.py;game" \
-            --icon=NONE \
             game/snake_game.py
-        else
-          pyinstaller --onefile --windowed --name "SnakeGame" \
+        elif [ "$RUNNER_OS" == "Linux" ]; then
+          pyinstaller --onefile --name "SnakeGame" \
             --add-data "game/snake_game.py:game" \
-            --icon=NONE \
+            game/snake_game.py
+        elif [ "$RUNNER_OS" == "macOS" ]; then
+          # macOS uses onefile mode without windowed for terminal-based launch
+          pyinstaller --onefile --name "SnakeGame" \
+            --add-data "game/snake_game.py:game" \
             game/snake_game.py
         fi
       shell: bash
@@ -54,35 +57,32 @@ jobs:
       shell: bash
       run: |
         if [ "$RUNNER_OS" == "Windows" ]; then
-          cp dist/SnakeGame.exe dist_release/
+          cp dist/SnakeGame.exe dist_release/SnakeGame-windows-x86_64.exe
           echo "OS=windows" >> $GITHUB_ENV
           echo "ARCH=x86_64" >> $GITHUB_ENV
-          echo "EXT=.exe" >> $GITHUB_ENV
         elif [ "$RUNNER_OS" == "Linux" ]; then
-          cp dist/SnakeGame dist_release/
+          cp dist/SnakeGame dist_release/SnakeGame-linux-x86_64
           echo "OS=linux" >> $GITHUB_ENV
           echo "ARCH=x86_64" >> $GITHUB_ENV
-          echo "EXT=" >> $GITHUB_ENV
         elif [ "$RUNNER_OS" == "macOS" ]; then
-          cp dist/SnakeGame dist_release/
+          cp dist/SnakeGame dist_release/SnakeGame-macos-x86_64
           echo "OS=macos" >> $GITHUB_ENV
           echo "ARCH=x86_64" >> $GITHUB_ENV
-          echo "EXT=" >> $GITHUB_ENV
         fi
       env:
         RUNNER_OS: ${{ runner.os }}
 
-    - name: Create tarball for Linux and macOS
+    - name: Create archive for Linux and macOS
       if: runner.os != 'Windows'
       working-directory: dist_release
       run: |
-        tar -czvf SnakeGame-${{ env.OS }}-${{ env.ARCH }}.tar.gz SnakeGame
+        tar -czvf SnakeGame-${{ env.OS }}-${{ env.ARCH }}.tar.gz SnakeGame-${{ env.OS }}-${{ env.ARCH }}
 
     - name: Create zip for Windows
       if: runner.os == 'Windows'
       working-directory: dist_release
       run: |
-        Compress-Archive -Path SnakeGame.exe -DestinationPath SnakeGame-windows-x86_64.zip
+        Compress-Archive -Path SnakeGame-windows-x86_64.exe -DestinationPath SnakeGame-windows-x86_64.zip
 
     - name: Generate SHA256 checksums
       working-directory: dist_release
@@ -91,9 +91,9 @@ jobs:
           # Windows: Use PowerShell Get-FileHash for proper format
           Get-FileHash SnakeGame-windows-x86_64.zip -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  $($_.Path -replace '^.*/', '')" } > checksums.txt
         elif [ "$RUNNER_OS" == "Linux" ]; then
-          sha256sum SnakeGame-linux-x86_64.tar.gz > checksums.txt
+          sha256sum SnakeGame-${{ env.OS }}-${{ env.ARCH }}.tar.gz > checksums.txt
         elif [ "$RUNNER_OS" == "macOS" ]; then
-          shasum -a 256 SnakeGame-macos-x86_64.tar.gz > checksums.txt
+          shasum -a 256 SnakeGame-${{ env.OS }}-${{ env.ARCH }}.tar.gz > checksums.txt
         fi
       shell: bash
       env:

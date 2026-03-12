@@ -346,7 +346,7 @@ class Game:
         pygame.draw.circle(self.screen, (255, 150, 150), highlight_pos, 4)
         # 添加外圈光晕效果
         glow_radius = int(radius + 4 + self.effect_manager.food_pulse * 3)
-        pygame.draw.circle(self.screen, (255, 100, 100, 100), center, glow_radius, 2)
+        pygame.draw.circle(self.screen, (255, 100, 100), center, glow_radius, 2)
 
     def draw_score(self):
         """绘制分数"""
