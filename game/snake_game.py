@@ -112,25 +112,7 @@ class SoundManager:
             self.enabled = False
             print("音效初始化失败，将静音运行")
 
-    def generate_tone(self, frequency, duration, volume=0.5, wave_type='sine'):
-        """生成指定频率的音调"""
-        if not self.enabled:
-            return None
-
-        n_samples = int(self.sample_rate * duration)
-        samples = []
-
-        for i in range(n_samples):
-            t = i / self.sample_rate
-            if wave_type == 'sine':
-                value = 32767 * volume * (0.5 * (1 + (i / n_samples) * -1)) * (2 * 3.14159 * frequency * t)
-            else:
-                value = 32767 * volume * (1 if (int(frequency * t) % 2 == 0) else -1)
-            samples.append(int(max(-32768, min(32767, value))))
-
-        sample = pygame.sndarray.make_sound(pygame.sndarray.array(samples))
-        return sample
-
+    
     def create_eat_sound(self):
         """创建吃食物的音效 - 高音滴声"""
         if not self.enabled:
@@ -314,8 +296,6 @@ class Game:
         self.sound_click = self.sound_manager.create_button_click_sound()
         # 特效管理器
         self.effect_manager = EffectManager()
-        # 难度选择界面按钮
-        self.back_button_rect = None
 
     def draw_grid(self):
         """绘制背景网格"""

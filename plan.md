@@ -51,12 +51,13 @@ snake/
 ```
 
 ## 项目状态
-- **当前版本**: v1.2.5
+- **当前版本**: v1.2.6
 - **状态**: 稳定运行
 - **最近更新时间**: 2026-03-12
-- **最新检查**: 2026-03-12 - 修复Windows版本启动报错，调整函数定义顺序
+- **最新检查**: 2026-03-12 - 代码清理，移除未使用的 generate_tone 方法和 back_button_rect 属性
 
 ## 版本历史
+- v1.2.6: 代码清理，移除未使用的 generate_tone 方法和 back_button_rect 属性
 - v1.2.5: 修复Windows版本启动报错，将load_game_data和save_game_data函数移到类定义之前
 - v1.2.4: 修复音效生成算法，使用正确的正弦波公式
 - v1.2.3: 修复 GitHub Release 权限问题，添加 workflow permissions 配置
