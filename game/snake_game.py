@@ -69,16 +69,30 @@ RIGHT = (1, 0)
 # 数据持久化相关
 DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "snake_data.json")
 
+# 排行榜每页显示数量
+LEADERBOARD_PAGE_SIZE = 5
+
 
 def load_game_data():
     """加载游戏数据"""
     try:
         if os.path.exists(DATA_FILE):
             with open(DATA_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+                data = json.load(f)
+                # 确保排行榜数据结构存在
+                if "leaderboards" not in data:
+                    data["leaderboards"] = {
+                        "经典": [],
+                        "限时": [],
+                        "无尽": []
+                    }
+                return data
     except Exception as e:
         print(f"加载数据失败：{e}")
-    return {"high_score": 0}
+    return {
+        "high_scores": {"经典": 0, "限时": 0, "无尽": 0},
+        "leaderboards": {"经典": [], "限时": [], "无尽": []}
+    }
 
 
 def save_game_data(data):
@@ -330,11 +344,15 @@ class Game:
         self.selected_difficulty = DEFAULT_DIFFICULTY
         self.selected_game_mode = DEFAULT_GAME_MODE
         self.selected_skin = DEFAULT_SKIN
-        self.state = "MENU"  # MENU, GAME_MODE_SELECT, DIFFICULTY_SELECT, PLAYING, PAUSED, GAME_OVER
+        self.state = "MENU"  # MENU, LEADERBOARD, PLAYING, PAUSED, GAME_OVER
         self.button_rect = None
         self.difficulty_buttons = []
         self.game_mode_buttons = []
         self.skin_buttons = []
+        # 排行榜数据
+        self.leaderboards = game_data.get("leaderboards", {"经典": [], "限时": [], "无尽": []})
+        self.leaderboard_mode = DEFAULT_GAME_MODE
+        self.leaderboard_back_button = None
         # 计时模式相关
         self.time_limit = 0
         self.time_remaining = 0
@@ -531,6 +549,20 @@ class Game:
         start_rect = start_text.get_rect(center=self.button_rect.center)
         self.screen.blit(start_text, start_rect)
 
+        # 排行榜按钮
+        self.leaderboard_button = pygame.Rect(
+            SCREEN_WIDTH // 2 - 80,
+            SCREEN_HEIGHT // 2 + 220,
+            160,
+            40
+        )
+        lb_button_color = COLOR_BUTTON_HOVER if self.leaderboard_button.collidepoint(mouse_pos) else COLOR_BUTTON
+        pygame.draw.rect(self.screen, lb_button_color, self.leaderboard_button, border_radius=10)
+
+        lb_text = self.font_medium.render("排行榜", True, COLOR_TEXT)
+        lb_rect = lb_text.get_rect(center=self.leaderboard_button.center)
+        self.screen.blit(lb_text, lb_rect)
+
         # 操作说明
         instructions = [
             "方向键或 WASD 控制移动",
@@ -539,7 +571,7 @@ class Game:
         ]
         for i, inst in enumerate(instructions):
             inst_surface = self.font_small.render(inst, True, COLOR_TEXT)
-            inst_rect = inst_surface.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 230 + i * 30))
+            inst_rect = inst_surface.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 280 + i * 30))
             self.screen.blit(inst_surface, inst_rect)
 
     def draw_pause(self):
@@ -618,8 +650,14 @@ class Game:
                 if self.state == "MENU":
                     if event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
                         self.start_game()
+                    elif event.key == pygame.K_l:
+                        self.state = "LEADERBOARD"
                     elif event.key == pygame.K_ESCAPE:
                         return False
+
+                elif self.state == "LEADERBOARD":
+                    if event.key == pygame.K_ESCAPE:
+                        self.state = "MENU"
 
                 elif self.state == "PLAYING":
                     if event.key in (pygame.K_UP, pygame.K_w):
@@ -676,6 +714,25 @@ class Game:
                     # 检查开始按钮点击
                     if self.button_rect and self.button_rect.collidepoint(mouse_pos):
                         self.start_game()
+                    # 检查排行榜按钮点击
+                    if self.leaderboard_button and self.leaderboard_button.collidepoint(mouse_pos):
+                        self.state = "LEADERBOARD"
+                        if self.sound_click:
+                            self.sound_click.play()
+                elif self.state == "LEADERBOARD":
+                    # 检查模式选择按钮
+                    if hasattr(self, 'mode_buttons'):
+                        for btn_rect, mode_name in self.mode_buttons:
+                            if btn_rect.collidepoint(mouse_pos):
+                                self.leaderboard_mode = mode_name
+                                if self.sound_click:
+                                    self.sound_click.play()
+                                break
+                    # 检查返回按钮
+                    if self.leaderboard_back_button and self.leaderboard_back_button.collidepoint(mouse_pos):
+                        self.state = "MENU"
+                        if self.sound_click:
+                            self.sound_click.play()
                 elif self.state == "GAME_OVER":
                     if self.button_rect and self.button_rect.collidepoint(mouse_pos):
                         self.start_game()
@@ -743,11 +800,118 @@ class Game:
         high_score = self.high_scores.get(self.selected_game_mode, 0)
         if self.score >= high_score and self.score > 0:
             self.high_scores[self.selected_game_mode] = self.score
-            save_game_data({"high_scores": self.high_scores})
+        # 添加到排行榜
+        self.add_to_leaderboard(self.selected_game_mode, self.score)
+        save_game_data({"high_scores": self.high_scores, "leaderboards": self.leaderboards})
         self.state = "GAME_OVER"
         # 播放游戏结束音效
         if self.sound_gameover:
             self.sound_gameover.play()
+
+    def add_to_leaderboard(self, mode, score):
+        """添加分数到排行榜"""
+        if score <= 0:
+            return
+        leaderboard = self.leaderboards.get(mode, [])
+        # 添加新分数（包含日期）
+        from datetime import datetime
+        entry = {
+            "score": score,
+            "date": datetime.now().strftime("%Y-%m-%d"),
+            "difficulty": self.selected_difficulty
+        }
+        leaderboard.append(entry)
+        # 按分数排序，保留前10名
+        leaderboard.sort(key=lambda x: x["score"], reverse=True)
+        self.leaderboards[mode] = leaderboard[:10]
+
+    def draw_leaderboard(self):
+        """绘制排行榜界面"""
+        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+        overlay.set_alpha(220)
+        overlay.fill((0, 0, 0))
+        self.screen.blit(overlay, (0, 0))
+
+        # 标题
+        title = self.font_large.render("排行榜", True, COLOR_SCORE)
+        title_rect = title.get_rect(center=(SCREEN_WIDTH // 2, 50))
+        self.screen.blit(title, title_rect)
+
+        # 游戏模式选择按钮
+        mode_buttons = []
+        button_width = 100
+        button_height = 35
+        start_x = SCREEN_WIDTH // 2 - (len(GAME_MODES) * (button_width + 10)) // 2
+        mouse_pos = pygame.mouse.get_pos()
+
+        for i, (mode_name, settings) in enumerate(GAME_MODES.items()):
+            btn_rect = pygame.Rect(
+                start_x + i * (button_width + 10),
+                90,
+                button_width,
+                button_height
+            )
+            mode_buttons.append((btn_rect, mode_name))
+            btn_color = settings["color"]
+            if self.leaderboard_mode == mode_name:
+                btn_color = tuple(min(255, c + 50) for c in btn_color)
+            elif btn_rect.collidepoint(mouse_pos):
+                btn_color = tuple(min(255, c + 30) for c in btn_color)
+            pygame.draw.rect(self.screen, btn_color, btn_rect, border_radius=8)
+            mode_text = self.font_small.render(mode_name, True, COLOR_TEXT)
+            text_rect = mode_text.get_rect(center=btn_rect.center)
+            self.screen.blit(mode_text, text_rect)
+
+        self.mode_buttons = mode_buttons
+
+        # 显示排行榜
+        leaderboard = self.leaderboards.get(self.leaderboard_mode, [])
+        y_offset = 150
+
+        # 表头
+        header_text = self.font_small.render("排名    分数    难度    日期", True, COLOR_TEXT)
+        header_rect = header_text.get_rect(center=(SCREEN_WIDTH // 2, y_offset))
+        self.screen.blit(header_text, header_rect)
+        y_offset += 40
+
+        # 分隔线
+        pygame.draw.line(self.screen, COLOR_GRID, (50, y_offset - 10), (SCREEN_WIDTH - 50, y_offset - 10), 2)
+
+        if not leaderboard:
+            no_data_text = self.font_medium.render("暂无记录", True, COLOR_TEXT)
+            no_data_rect = no_data_text.get_rect(center=(SCREEN_WIDTH // 2, y_offset + 50))
+            self.screen.blit(no_data_text, no_data_rect)
+        else:
+            for i, entry in enumerate(leaderboard[:LEADERBOARD_PAGE_SIZE]):
+                # 排名颜色
+                if i == 0:
+                    rank_color = (255, 215, 0)  # 金色
+                elif i == 1:
+                    rank_color = (192, 192, 192)  # 银色
+                elif i == 2:
+                    rank_color = (205, 127, 50)  # 铜色
+                else:
+                    rank_color = COLOR_TEXT
+
+                rank_text = f"  {i + 1}      {entry['score']}      {entry['difficulty']}      {entry['date']}"
+                entry_surface = self.font_small.render(rank_text, True, rank_color)
+                entry_rect = entry_surface.get_rect(center=(SCREEN_WIDTH // 2, y_offset))
+                self.screen.blit(entry_surface, entry_rect)
+                y_offset += 35
+
+        # 返回按钮
+        self.leaderboard_back_button = pygame.Rect(
+            SCREEN_WIDTH // 2 - 80,
+            SCREEN_HEIGHT - 80,
+            160,
+            45
+        )
+        button_color = COLOR_BUTTON_HOVER if self.leaderboard_back_button.collidepoint(mouse_pos) else COLOR_BUTTON
+        pygame.draw.rect(self.screen, button_color, self.leaderboard_back_button, border_radius=10)
+
+        back_text = self.font_medium.render("返回", True, COLOR_TEXT)
+        back_rect = back_text.get_rect(center=self.leaderboard_back_button.center)
+        self.screen.blit(back_text, back_rect)
 
     def draw(self):
         """绘制游戏画面"""
@@ -758,6 +922,8 @@ class Game:
 
         if self.state == "MENU":
             self.draw_menu()
+        elif self.state == "LEADERBOARD":
+            self.draw_leaderboard()
         elif self.state == "PAUSED":
             self.draw_pause()
         elif self.state == "GAME_OVER":
