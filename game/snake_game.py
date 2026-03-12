@@ -40,6 +40,14 @@ DIFFICULTY_SETTINGS = {
 }
 DEFAULT_DIFFICULTY = "中等"
 
+# 游戏模式配置
+GAME_MODES = {
+    "经典": {"desc": "经典模式，撞墙或自身游戏结束", "color": (100, 200, 100)},
+    "限时": {"desc": "限时60秒，挑战最高分", "time": 60, "color": (200, 180, 100)},
+    "无尽": {"desc": "无墙壁，蛇穿墙而过", "color": (200, 100, 100)},
+}
+DEFAULT_GAME_MODE = "经典"
+
 FPS = 10  # 默认值，会根据难度动态调整
 
 # 方向定义
@@ -246,19 +254,27 @@ class Snake:
         else:
             self.grow = False
 
-    def check_collision(self):
+    def check_collision(self, game_mode="经典"):
         """检测碰撞（墙壁或自身）"""
         head = self.body[0]
 
-        # 撞墙检测
-        if head[0] < 0 or head[0] >= GRID_WIDTH or head[1] < 0 or head[1] >= GRID_HEIGHT:
-            return True
+        # 撞墙检测（无尽模式不检测撞墙）
+        if game_mode != "无尽":
+            if head[0] < 0 or head[0] >= GRID_WIDTH or head[1] < 0 or head[1] >= GRID_HEIGHT:
+                return True
 
         # 撞自身检测
         if head in self.body[1:]:
             return True
 
         return False
+
+    def wrap_around(self):
+        """无尽模式：蛇穿墙而过"""
+        head_x, head_y = self.body[0]
+        new_x = head_x % GRID_WIDTH
+        new_y = head_y % GRID_HEIGHT
+        self.body[0] = (new_x, new_y)
 
     def eat(self):
         """吃到食物，蛇身增长"""
@@ -297,11 +313,20 @@ class Game:
         self.score = 0
         # 加载持久化的最高分
         game_data = load_game_data()
-        self.high_score = game_data.get("high_score", 0)
+        self.high_scores = game_data.get("high_scores", {"经典": 0, "限时": 0, "无尽": 0})
+        # 兼容旧版本数据
+        if "high_score" in game_data and not self.high_scores.get("经典"):
+            self.high_scores["经典"] = game_data["high_score"]
         self.selected_difficulty = DEFAULT_DIFFICULTY
-        self.state = "MENU"  # MENU, DIFFICULTY_SELECT, PLAYING, PAUSED, GAME_OVER
+        self.selected_game_mode = DEFAULT_GAME_MODE
+        self.state = "MENU"  # MENU, GAME_MODE_SELECT, DIFFICULTY_SELECT, PLAYING, PAUSED, GAME_OVER
         self.button_rect = None
         self.difficulty_buttons = []
+        self.game_mode_buttons = []
+        # 计时模式相关
+        self.time_limit = 0
+        self.time_remaining = 0
+        self.start_time = 0
         # 初始化和创建音效
         self.sound_manager = SoundManager()
         self.sound_eat = self.sound_manager.create_eat_sound()
@@ -371,7 +396,11 @@ class Game:
 
     def draw_score(self):
         """绘制分数"""
-        score_text = f"得分：{self.score}  |  最高分：{self.high_score}"
+        high_score = self.high_scores.get(self.selected_game_mode, 0)
+        if self.selected_game_mode == "限时":
+            score_text = f"得分：{self.score}  |  剩余时间：{self.time_remaining}秒  |  最高分：{high_score}"
+        else:
+            score_text = f"得分：{self.score}  |  最高分：{high_score}"
         text_surface = self.font_small.render(score_text, True, COLOR_SCORE)
         text_rect = text_surface.get_rect(center=(SCREEN_WIDTH // 2, 25))
         self.screen.blit(text_surface, text_rect)
@@ -385,26 +414,52 @@ class Game:
 
         # 游戏标题
         title = self.font_large.render("贪吃蛇游戏", True, COLOR_TEXT)
-        title_rect = title.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 120))
+        title_rect = title.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 160))
         self.screen.blit(title, title_rect)
+
+        # 显示当前选择的游戏模式
+        mode_color = GAME_MODES[self.selected_game_mode]["color"]
+        mode_text = self.font_medium.render(f"当前模式：{self.selected_game_mode}", True, mode_color)
+        mode_rect = mode_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 100))
+        self.screen.blit(mode_text, mode_rect)
+
+        # 游戏模式选择按钮
+        self.game_mode_buttons = []
+        button_width = 100
+        button_height = 40
+        start_x = SCREEN_WIDTH // 2 - (len(GAME_MODES) * (button_width + 10)) // 2
+        mouse_pos = pygame.mouse.get_pos()
+
+        for i, (mode_name, settings) in enumerate(GAME_MODES.items()):
+            btn_rect = pygame.Rect(
+                start_x + i * (button_width + 10),
+                SCREEN_HEIGHT // 2 - 60,
+                button_width,
+                button_height
+            )
+            self.game_mode_buttons.append((btn_rect, mode_name))
+            btn_color = settings["color"]
+            if btn_rect.collidepoint(mouse_pos):
+                btn_color = tuple(min(255, c + 50) for c in btn_color)
+            pygame.draw.rect(self.screen, btn_color, btn_rect, border_radius=8)
+            mode_text = self.font_small.render(mode_name, True, COLOR_TEXT)
+            text_rect = mode_text.get_rect(center=btn_rect.center)
+            self.screen.blit(mode_text, text_rect)
 
         # 显示当前选择的难度
         diff_color = DIFFICULTY_SETTINGS[self.selected_difficulty]["color"]
         diff_text = self.font_medium.render(f"当前难度：{self.selected_difficulty}", True, diff_color)
-        diff_rect = diff_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 60))
+        diff_rect = diff_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2))
         self.screen.blit(diff_text, diff_rect)
 
         # 难度选择按钮
         self.difficulty_buttons = []
-        button_width = 100
-        button_height = 40
         start_x = SCREEN_WIDTH // 2 - (len(DIFFICULTY_SETTINGS) * (button_width + 10)) // 2
-        mouse_pos = pygame.mouse.get_pos()
 
         for i, (diff_name, settings) in enumerate(DIFFICULTY_SETTINGS.items()):
             btn_rect = pygame.Rect(
                 start_x + i * (button_width + 10),
-                SCREEN_HEIGHT // 2 - 20,
+                SCREEN_HEIGHT // 2 + 40,
                 button_width,
                 button_height
             )
@@ -420,11 +475,10 @@ class Game:
         # 开始按钮
         self.button_rect = pygame.Rect(
             SCREEN_WIDTH // 2 - 100,
-            SCREEN_HEIGHT // 2 + 40,
+            SCREEN_HEIGHT // 2 + 100,
             200,
             50
         )
-        mouse_pos = pygame.mouse.get_pos()
         button_color = COLOR_BUTTON_HOVER if self.button_rect.collidepoint(mouse_pos) else COLOR_BUTTON
         pygame.draw.rect(self.screen, button_color, self.button_rect, border_radius=10)
 
@@ -440,7 +494,7 @@ class Game:
         ]
         for i, inst in enumerate(instructions):
             inst_surface = self.font_small.render(inst, True, COLOR_TEXT)
-            inst_rect = inst_surface.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 120 + i * 30))
+            inst_rect = inst_surface.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 170 + i * 30))
             self.screen.blit(inst_surface, inst_rect)
 
     def draw_pause(self):
@@ -469,22 +523,35 @@ class Game:
         overlay.fill((0, 0, 0))
         self.screen.blit(overlay, (0, 0))
 
+        high_score = self.high_scores.get(self.selected_game_mode, 0)
+        is_new_high_score = self.score >= high_score and self.score > 0
+
         game_over_text = self.font_large.render("游戏结束", True, (255, 100, 100))
-        game_over_rect = game_over_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 60))
+        game_over_rect = game_over_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 80))
         self.screen.blit(game_over_text, game_over_rect)
+
+        # 显示游戏模式
+        mode_text = self.font_small.render(f"模式：{self.selected_game_mode}", True, GAME_MODES[self.selected_game_mode]["color"])
+        mode_rect = mode_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 40))
+        self.screen.blit(mode_text, mode_rect)
 
         score_text = self.font_medium.render(f"最终得分：{self.score}", True, COLOR_TEXT)
         score_rect = score_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2))
         self.screen.blit(score_text, score_rect)
 
+        if is_new_high_score:
+            new_high_text = self.font_medium.render("新纪录！", True, (255, 215, 0))
+            new_high_rect = new_high_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 40))
+            self.screen.blit(new_high_text, new_high_rect)
+
         restart_text = self.font_small.render("按 R 键重新开始 或 点击按钮", True, COLOR_TEXT)
-        restart_rect = restart_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 50))
+        restart_rect = restart_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 80))
         self.screen.blit(restart_text, restart_rect)
 
         # 重新开始按钮
         self.button_rect = pygame.Rect(
             SCREEN_WIDTH // 2 - 100,
-            SCREEN_HEIGHT // 2 + 80,
+            SCREEN_HEIGHT // 2 + 110,
             200,
             50
         )
@@ -539,8 +606,15 @@ class Game:
 
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 mouse_pos = pygame.mouse.get_pos()
-                # 检查难度按钮点击
+                # 检查游戏模式按钮点击
                 if self.state == "MENU":
+                    for btn_rect, mode_name in self.game_mode_buttons:
+                        if btn_rect.collidepoint(mouse_pos):
+                            self.selected_game_mode = mode_name
+                            if self.sound_click:
+                                self.sound_click.play()
+                            break
+                    # 检查难度按钮点击
                     for btn_rect, diff_name in self.difficulty_buttons:
                         if btn_rect.collidepoint(mouse_pos):
                             self.selected_difficulty = diff_name
@@ -565,37 +639,63 @@ class Game:
         # 根据难度设置 FPS
         global FPS
         FPS = DIFFICULTY_SETTINGS[self.selected_difficulty]["fps"]
+        # 初始化限时模式计时器
+        if self.selected_game_mode == "限时":
+            self.time_limit = GAME_MODES["限时"]["time"]
+            self.time_remaining = self.time_limit
+            self.start_time = pygame.time.get_ticks()
+        else:
+            self.time_remaining = 0
 
     def update(self):
         """更新游戏状态"""
         if self.state != "PLAYING":
             return
 
+        # 更新限时模式计时器
+        if self.selected_game_mode == "限时":
+            elapsed = (pygame.time.get_ticks() - self.start_time) // 1000
+            self.time_remaining = max(0, self.time_limit - elapsed)
+            # 时间到，游戏结束
+            if self.time_remaining <= 0:
+                self.end_game()
+                return
+
         self.snake.update()
+
+        # 无尽模式：蛇穿墙
+        if self.selected_game_mode == "无尽":
+            self.snake.wrap_around()
 
         # 检测吃食物
         if self.snake.body[0] == self.food.position:
             self.snake.eat()
             self.score += 10
-            if self.score > self.high_score:
-                self.high_score = self.score
+            if self.score > self.high_scores.get(self.selected_game_mode, 0):
+                self.high_scores[self.selected_game_mode] = self.score
             self.food.spawn(self.snake.body)
             # 播放吃食物音效
             if self.sound_eat:
                 self.sound_eat.play()
 
-        # 检测碰撞
-        if self.snake.check_collision():
+        # 检测碰撞（经典模式和限时模式）
+        if self.snake.check_collision(self.selected_game_mode):
             # 播放撞墙音效
             if self.sound_crash:
                 self.sound_crash.play()
-            # 游戏结束时保存最高分
-            if self.score > load_game_data().get("high_score", 0):
-                save_game_data({"high_score": self.score})
-            self.state = "GAME_OVER"
-            # 播放游戏结束音效
-            if self.sound_gameover:
-                self.sound_gameover.play()
+            self.end_game()
+
+    def end_game(self):
+        """结束游戏"""
+        # 保存最高分
+        high_score = self.high_scores.get(self.selected_game_mode, 0)
+        if self.score >= high_score and self.score > 0:
+            self.high_scores[self.selected_game_mode] = self.score
+            save_game_data({"high_scores": self.high_scores})
+        self.state = "GAME_OVER"
+        # 播放游戏结束音效
+        if self.sound_gameover:
+            self.sound_gameover.play()
 
     def draw(self):
         """绘制游戏画面"""
