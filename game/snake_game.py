@@ -48,6 +48,16 @@ GAME_MODES = {
 }
 DEFAULT_GAME_MODE = "经典"
 
+# 皮肤配置
+SKINS = {
+    "翠绿": {"head": (100, 220, 100), "body": (60, 180, 60), "food": (255, 100, 100), "color": (100, 200, 100)},
+    "深蓝": {"head": (100, 150, 255), "body": (60, 100, 200), "food": (255, 200, 100), "color": (100, 150, 255)},
+    "紫罗兰": {"head": (180, 100, 255), "body": (140, 60, 200), "food": (255, 255, 100), "color": (180, 100, 255)},
+    "金色": {"head": (255, 200, 100), "body": (200, 150, 50), "food": (255, 100, 100), "color": (255, 200, 100)},
+    "火焰": {"head": (255, 100, 50), "body": (200, 50, 0), "food": (100, 255, 100), "color": (255, 100, 50)},
+}
+DEFAULT_SKIN = "翠绿"
+
 FPS = 10  # 默认值，会根据难度动态调整
 
 # 方向定义
@@ -319,10 +329,12 @@ class Game:
             self.high_scores["经典"] = game_data["high_score"]
         self.selected_difficulty = DEFAULT_DIFFICULTY
         self.selected_game_mode = DEFAULT_GAME_MODE
+        self.selected_skin = DEFAULT_SKIN
         self.state = "MENU"  # MENU, GAME_MODE_SELECT, DIFFICULTY_SELECT, PLAYING, PAUSED, GAME_OVER
         self.button_rect = None
         self.difficulty_buttons = []
         self.game_mode_buttons = []
+        self.skin_buttons = []
         # 计时模式相关
         self.time_limit = 0
         self.time_remaining = 0
@@ -346,8 +358,11 @@ class Game:
 
     def draw_snake(self):
         """绘制蛇"""
+        skin = SKINS[self.selected_skin]
+        head_color = skin["head"]
+        body_color = skin["body"]
         for i, (x, y) in enumerate(self.snake.body):
-            color = COLOR_SNAKE_HEAD if i == 0 else COLOR_SNAKE_BODY
+            color = head_color if i == 0 else body_color
             rect = pygame.Rect(
                 x * CELL_SIZE + 2,
                 y * CELL_SIZE + 42,  # 偏移以留出分数显示空间
@@ -377,6 +392,8 @@ class Game:
 
     def draw_food(self):
         """绘制食物"""
+        skin = SKINS[self.selected_skin]
+        food_color = skin["food"]
         x, y = self.food.position
         # 更新特效
         self.effect_manager.update()
@@ -386,13 +403,14 @@ class Game:
             y * CELL_SIZE + 42 + CELL_SIZE // 2
         )
         radius = self.effect_manager.get_food_radius(CELL_SIZE // 2 - 2)
-        pygame.draw.circle(self.screen, COLOR_FOOD, center, int(radius))
+        pygame.draw.circle(self.screen, food_color, center, int(radius))
         # 添加高光效果
+        highlight_color = tuple(min(255, c + 50) for c in food_color)
         highlight_pos = (center[0] - 4, center[1] - 4)
-        pygame.draw.circle(self.screen, (255, 150, 150), highlight_pos, 4)
+        pygame.draw.circle(self.screen, highlight_color, highlight_pos, 4)
         # 添加外圈光晕效果
         glow_radius = int(radius + 4 + self.effect_manager.food_pulse * 3)
-        pygame.draw.circle(self.screen, (255, 100, 100), center, glow_radius, 2)
+        pygame.draw.circle(self.screen, food_color, center, glow_radius, 2)
 
     def draw_score(self):
         """绘制分数"""
@@ -414,13 +432,13 @@ class Game:
 
         # 游戏标题
         title = self.font_large.render("贪吃蛇游戏", True, COLOR_TEXT)
-        title_rect = title.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 160))
+        title_rect = title.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 200))
         self.screen.blit(title, title_rect)
 
         # 显示当前选择的游戏模式
         mode_color = GAME_MODES[self.selected_game_mode]["color"]
         mode_text = self.font_medium.render(f"当前模式：{self.selected_game_mode}", True, mode_color)
-        mode_rect = mode_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 100))
+        mode_rect = mode_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 140))
         self.screen.blit(mode_text, mode_rect)
 
         # 游戏模式选择按钮
@@ -433,7 +451,7 @@ class Game:
         for i, (mode_name, settings) in enumerate(GAME_MODES.items()):
             btn_rect = pygame.Rect(
                 start_x + i * (button_width + 10),
-                SCREEN_HEIGHT // 2 - 60,
+                SCREEN_HEIGHT // 2 - 100,
                 button_width,
                 button_height
             )
@@ -449,7 +467,7 @@ class Game:
         # 显示当前选择的难度
         diff_color = DIFFICULTY_SETTINGS[self.selected_difficulty]["color"]
         diff_text = self.font_medium.render(f"当前难度：{self.selected_difficulty}", True, diff_color)
-        diff_rect = diff_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2))
+        diff_rect = diff_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 40))
         self.screen.blit(diff_text, diff_rect)
 
         # 难度选择按钮
@@ -459,7 +477,7 @@ class Game:
         for i, (diff_name, settings) in enumerate(DIFFICULTY_SETTINGS.items()):
             btn_rect = pygame.Rect(
                 start_x + i * (button_width + 10),
-                SCREEN_HEIGHT // 2 + 40,
+                SCREEN_HEIGHT // 2,
                 button_width,
                 button_height
             )
@@ -472,10 +490,37 @@ class Game:
             text_rect = diff_text.get_rect(center=btn_rect.center)
             self.screen.blit(diff_text, text_rect)
 
+        # 显示当前选择的皮肤
+        skin_color = SKINS[self.selected_skin]["color"]
+        skin_text = self.font_medium.render(f"当前皮肤：{self.selected_skin}", True, skin_color)
+        skin_rect = skin_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 60))
+        self.screen.blit(skin_text, skin_rect)
+
+        # 皮肤选择按钮
+        self.skin_buttons = []
+        skin_button_width = 80
+        start_x = SCREEN_WIDTH // 2 - (len(SKINS) * (skin_button_width + 5)) // 2
+
+        for i, (skin_name, settings) in enumerate(SKINS.items()):
+            btn_rect = pygame.Rect(
+                start_x + i * (skin_button_width + 5),
+                SCREEN_HEIGHT // 2 + 100,
+                skin_button_width,
+                button_height
+            )
+            self.skin_buttons.append((btn_rect, skin_name))
+            btn_color = settings["color"]
+            if btn_rect.collidepoint(mouse_pos):
+                btn_color = tuple(min(255, c + 50) for c in btn_color)
+            pygame.draw.rect(self.screen, btn_color, btn_rect, border_radius=8)
+            skin_text = self.font_small.render(skin_name, True, COLOR_TEXT)
+            text_rect = skin_text.get_rect(center=btn_rect.center)
+            self.screen.blit(skin_text, text_rect)
+
         # 开始按钮
         self.button_rect = pygame.Rect(
             SCREEN_WIDTH // 2 - 100,
-            SCREEN_HEIGHT // 2 + 100,
+            SCREEN_HEIGHT // 2 + 160,
             200,
             50
         )
@@ -494,7 +539,7 @@ class Game:
         ]
         for i, inst in enumerate(instructions):
             inst_surface = self.font_small.render(inst, True, COLOR_TEXT)
-            inst_rect = inst_surface.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 170 + i * 30))
+            inst_rect = inst_surface.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 230 + i * 30))
             self.screen.blit(inst_surface, inst_rect)
 
     def draw_pause(self):
@@ -618,6 +663,13 @@ class Game:
                     for btn_rect, diff_name in self.difficulty_buttons:
                         if btn_rect.collidepoint(mouse_pos):
                             self.selected_difficulty = diff_name
+                            if self.sound_click:
+                                self.sound_click.play()
+                            break
+                    # 检查皮肤按钮点击
+                    for btn_rect, skin_name in self.skin_buttons:
+                        if btn_rect.collidepoint(mouse_pos):
+                            self.selected_skin = skin_name
                             if self.sound_click:
                                 self.sound_click.play()
                             break
