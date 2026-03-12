@@ -28,16 +28,27 @@ jobs:
         python -m pip install --upgrade pip
         pip install pygame pyinstaller
 
+    - name: Create distribution directory
+      run: |
+        mkdir -p dist_release
+      shell: bash
+
     - name: Build executable with PyInstaller
       run: |
         if [ "$RUNNER_OS" == "Windows" ]; then
           pyinstaller --onefile --windowed --name "SnakeGame" \
             --add-data "game/snake_game.py;game" \
             game/snake_game.py
+          cp dist/SnakeGame.exe dist_release/SnakeGame-windows-x86_64.exe
+          echo "OS=windows" >> $GITHUB_ENV
+          echo "ARCH=x86_64" >> $GITHUB_ENV
         elif [ "$RUNNER_OS" == "Linux" ]; then
           pyinstaller --onefile --name "SnakeGame" \
             --add-data "game/snake_game.py:game" \
             game/snake_game.py
+          cp dist/SnakeGame dist_release/SnakeGame-linux-x86_64
+          echo "OS=linux" >> $GITHUB_ENV
+          echo "ARCH=x86_64" >> $GITHUB_ENV
         elif [ "$RUNNER_OS" == "macOS" ]; then
           # macOS: Use onedir mode with .app bundle for GUI app
           # Create a minimal valid icns file using Python
@@ -58,32 +69,10 @@ PYEOF
             game/snake_game.py
           # Copy .app bundle to dist_release
           cp -r dist/SnakeGame.app dist_release/
-        fi
-      shell: bash
-      env:
-        RUNNER_OS: ${{ runner.os }}
-
-    - name: Create distribution directory
-      run: |
-        mkdir -p dist_release
-      shell: bash
-
-    - name: Prepare release files
-      shell: bash
-      run: |
-        if [ "$RUNNER_OS" == "Windows" ]; then
-          cp dist/SnakeGame.exe dist_release/SnakeGame-windows-x86_64.exe
-          echo "OS=windows" >> $GITHUB_ENV
-          echo "ARCH=x86_64" >> $GITHUB_ENV
-        elif [ "$RUNNER_OS" == "Linux" ]; then
-          cp dist/SnakeGame dist_release/SnakeGame-linux-x86_64
-          echo "OS=linux" >> $GITHUB_ENV
-          echo "ARCH=x86_64" >> $GITHUB_ENV
-        elif [ "$RUNNER_OS" == "macOS" ]; then
-          # macOS: Create DMG for .app bundle
           echo "OS=macos" >> $GITHUB_ENV
           echo "ARCH=x86_64" >> $GITHUB_ENV
         fi
+      shell: bash
       env:
         RUNNER_OS: ${{ runner.os }}
 
