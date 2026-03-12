@@ -45,3 +45,6 @@ Thumbs.db
 dist_release/
 artifacts/
 release_files/
+
+# Game data (user specific)
+game/snake_data.json
