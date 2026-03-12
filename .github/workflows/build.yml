@@ -39,10 +39,25 @@ jobs:
             --add-data "game/snake_game.py:game" \
             game/snake_game.py
         elif [ "$RUNNER_OS" == "macOS" ]; then
-          # macOS uses onefile mode without windowed for terminal-based launch
-          pyinstaller --onefile --name "SnakeGame" \
+          # macOS: Use onedir mode with .app bundle for GUI app
+          # Create a minimal valid icns file using Python
+          mkdir -p icons
+          python3 << 'PYEOF'
+import struct
+# ICNS header: 'icns' + size (big endian)
+# Minimal ICNS with one icon entry (ICON type, 16x16)
+icns_data = b'icns' + struct.pack('>I', 1024)
+# Add empty ICON entry
+icns_data += b'ICON' + struct.pack('>I', 1008) + b'\x00' * 1008
+with open('icons/empty.icns', 'wb') as f:
+    f.write(icns_data)
+PYEOF
+          pyinstaller --onedir --windowed --name "SnakeGame" \
+            --icon=icons/empty.icns \
             --add-data "game/snake_game.py:game" \
             game/snake_game.py
+          # Copy .app bundle to dist_release
+          cp -r dist/SnakeGame.app dist_release/
         fi
       shell: bash
       env:
@@ -65,18 +80,25 @@ jobs:
           echo "OS=linux" >> $GITHUB_ENV
           echo "ARCH=x86_64" >> $GITHUB_ENV
         elif [ "$RUNNER_OS" == "macOS" ]; then
-          cp dist/SnakeGame dist_release/SnakeGame-macos-x86_64
+          # macOS: Create DMG for .app bundle
           echo "OS=macos" >> $GITHUB_ENV
           echo "ARCH=x86_64" >> $GITHUB_ENV
         fi
       env:
         RUNNER_OS: ${{ runner.os }}
 
-    - name: Create archive for Linux and macOS
-      if: runner.os != 'Windows'
+    - name: Create archive for Linux
+      if: runner.os == 'Linux'
       working-directory: dist_release
       run: |
         tar -czvf SnakeGame-${{ env.OS }}-${{ env.ARCH }}.tar.gz SnakeGame-${{ env.OS }}-${{ env.ARCH }}
+
+    - name: Create DMG for macOS
+      if: runner.os == 'macOS'
+      working-directory: dist_release
+      run: |
+        # Create a DMG file for the .app bundle
+        hdiutil create -volname "SnakeGame" -srcfolder "SnakeGame.app" -ov -format UDZO SnakeGame-${{ env.OS }}-${{ env.ARCH }}.dmg
 
     - name: Create zip for Windows
       if: runner.os == 'Windows'
@@ -93,7 +115,7 @@ jobs:
         elif [ "$RUNNER_OS" == "Linux" ]; then
           sha256sum SnakeGame-${{ env.OS }}-${{ env.ARCH }}.tar.gz > checksums.txt
         elif [ "$RUNNER_OS" == "macOS" ]; then
-          shasum -a 256 SnakeGame-${{ env.OS }}-${{ env.ARCH }}.tar.gz > checksums.txt
+          shasum -a 256 SnakeGame-${{ env.OS }}-${{ env.ARCH }}.dmg > checksums.txt
         fi
       shell: bash
       env:
@@ -125,6 +147,7 @@ jobs:
         for dir in artifacts/*/; do
           cp "$dir"/*.tar.gz release_files/ 2>/dev/null || true
           cp "$dir"/*.zip release_files/ 2>/dev/null || true
+          cp "$dir"/*.dmg release_files/ 2>/dev/null || true
           cp "$dir"/*.txt release_files/ 2>/dev/null || true
         done
 
