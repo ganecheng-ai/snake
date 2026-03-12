@@ -1,0 +1,134 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+        python-version: ['3.11']
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pygame pyinstaller
+
+    - name: Build executable with PyInstaller
+      run: |
+        pyinstaller --onefile --windowed --name "SnakeGame" \
+          --add-data "game/snake_game.py:game" \
+          --icon=NONE \
+          game/snake_game.py
+      shell: bash
+
+    - name: Create distribution directory
+      run: |
+        mkdir -p dist_release
+      shell: bash
+
+    - name: Prepare release files
+      shell: bash
+      run: |
+        if [ "$RUNNER_OS" == "Windows" ]; then
+          cp dist/SnakeGame.exe dist_release/
+          echo "OS=windows" >> $GITHUB_ENV
+          echo "ARCH=x86_64" >> $GITHUB_ENV
+          echo "EXT=.exe" >> $GITHUB_ENV
+        elif [ "$RUNNER_OS" == "Linux" ]; then
+          cp dist/SnakeGame dist_release/
+          echo "OS=linux" >> $GITHUB_ENV
+          echo "ARCH=x86_64" >> $GITHUB_ENV
+          echo "EXT=" >> $GITHUB_ENV
+        elif [ "$RUNNER_OS" == "macOS" ]; then
+          cp dist/SnakeGame dist_release/
+          echo "OS=macos" >> $GITHUB_ENV
+          echo "ARCH=x86_64" >> $GITHUB_ENV
+          echo "EXT=" >> $GITHUB_ENV
+        fi
+      env:
+        RUNNER_OS: ${{ runner.os }}
+
+    - name: Create tarball for Linux and macOS
+      if: runner.os != 'Windows'
+      working-directory: dist_release
+      run: |
+        tar -czvf SnakeGame-${{ env.OS }}-${{ env.ARCH }}.tar.gz SnakeGame
+
+    - name: Create zip for Windows
+      if: runner.os == 'Windows'
+      working-directory: dist_release
+      run: |
+        Compress-Archive -Path SnakeGame.exe -DestinationPath SnakeGame-windows-x86_64.zip
+
+    - name: Generate SHA256 checksums
+      working-directory: dist_release
+      run: |
+        if [ "$RUNNER_OS" == "Windows" ]; then
+          certutil -hashfile SnakeGame-windows-x86_64.zip SHA256 > checksums.txt
+        elif [ "$RUNNER_OS" == "Linux" ]; then
+          sha256sum SnakeGame-linux-x86_64.tar.gz > checksums.txt
+        elif [ "$RUNNER_OS" == "macOS" ]; then
+          shasum -a 256 SnakeGame-macos-x86_64.tar.gz > checksums.txt
+        fi
+      shell: bash
+      env:
+        RUNNER_OS: ${{ runner.os }}
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: snake-game-${{ matrix.os }}
+        path: dist_release/
+        retention-days: 30
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts/
+
+    - name: Combine all release files
+      run: |
+        mkdir -p release_files
+        # Copy all artifacts to release_files directory
+        for dir in artifacts/*/; do
+          cp "$dir"/*.tar.gz release_files/ 2>/dev/null || true
+          cp "$dir"/*.zip release_files/ 2>/dev/null || true
+          cp "$dir"/*.txt release_files/ 2>/dev/null || true
+        done
+
+    - name: Generate combined checksums
+      working-directory: release_files
+      run: |
+        sha256sum * > checksums.txt 2>/dev/null || true
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: release_files/*
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

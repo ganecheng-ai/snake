@@ -1,0 +1,414 @@
+# -*- coding: utf-8 -*-
+"""
+贪吃蛇游戏 (Snake Game)
+一个使用 Python 和 Pygame 开发的经典贪吃蛇游戏，支持简体中文界面。
+"""
+
+import pygame
+import random
+import sys
+
+# 初始化 pygame
+pygame.init()
+
+# 颜色定义 (使用柔和、美观的配色)
+COLOR_BG = (20, 20, 30)           # 深蓝灰色背景
+COLOR_SNAKE_HEAD = (100, 220, 100)  # 浅绿色蛇头
+COLOR_SNAKE_BODY = (60, 180, 60)    # 绿色蛇身
+COLOR_FOOD = (255, 100, 100)        # 红色食物
+COLOR_GRID = (40, 40, 50)           # 网格线颜色
+COLOR_TEXT = (255, 255, 255)        # 白色文字
+COLOR_SCORE = (255, 215, 0)         # 金色分数
+COLOR_BUTTON = (70, 130, 180)       # 按钮颜色
+COLOR_BUTTON_HOVER = (100, 160, 210)  # 按钮悬停颜色
+
+# 游戏配置
+CELL_SIZE = 25                       # 每个格子大小
+GRID_WIDTH = 24                      # 网格宽度（格子数）
+GRID_HEIGHT = 20                     # 网格高度（格子数）
+SCREEN_WIDTH = CELL_SIZE * GRID_WIDTH
+SCREEN_HEIGHT = CELL_SIZE * GRID_HEIGHT + 60  # 额外空间用于显示分数
+FPS = 10                             # 游戏帧率（控制蛇的速度）
+
+# 方向定义
+UP = (0, -1)
+DOWN = (0, 1)
+LEFT = (-1, 0)
+RIGHT = (1, 0)
+
+# 中文字体（尝试使用系统字体）
+CHINESE_FONTS = [
+    'SimHei',           # 黑体 (Windows)
+    'Microsoft YaHei',  # 微软雅黑 (Windows)
+    'PingFang SC',      # 苹方 (macOS)
+    'Heiti SC',         # 黑体简 (macOS)
+    'WenQuanYi Micro Hei',  # 文泉驿 (Linux)
+    'Noto Sans CJK SC',     # 思源黑体
+    'fonts/wqy-microhei.ttc',  # 备用字体文件
+]
+
+def get_chinese_font(size):
+    """获取支持中文的字体"""
+    for font_name in CHINESE_FONTS:
+        try:
+            font = pygame.font.Font(font_name, size)
+            # 测试是否能渲染中文字符
+            test_render = font.render("测试", True, COLOR_TEXT)
+            return font
+        except:
+            continue
+    # 如果所有中文字体都失败，使用默认字体（可能无法显示中文）
+    try:
+        return pygame.font.Font(None, size)
+    except:
+        return pygame.font.SysFont('arial', size)
+
+
+class Snake:
+    """蛇类"""
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        """重置蛇的状态"""
+        # 初始位置在屏幕中央
+        start_x = GRID_WIDTH // 2
+        start_y = GRID_HEIGHT // 2
+        self.body = [
+            (start_x, start_y),
+            (start_x - 1, start_y),
+            (start_x - 2, start_y)
+        ]
+        self.direction = RIGHT
+        self.next_direction = RIGHT
+        self.grow = False
+
+    def change_direction(self, new_direction):
+        """改变方向（防止 180 度转向）"""
+        opposite = (-self.direction[0], -self.direction[1])
+        if new_direction != opposite:
+            self.next_direction = new_direction
+
+    def update(self):
+        """更新蛇的位置"""
+        self.direction = self.next_direction
+        head_x, head_y = self.body[0]
+        dir_x, dir_y = self.direction
+        new_head = (head_x + dir_x, head_y + dir_y)
+
+        self.body.insert(0, new_head)
+        if not self.grow:
+            self.body.pop()
+        else:
+            self.grow = False
+
+    def check_collision(self):
+        """检测碰撞（墙壁或自身）"""
+        head = self.body[0]
+
+        # 撞墙检测
+        if head[0] < 0 or head[0] >= GRID_WIDTH or head[1] < 0 or head[1] >= GRID_HEIGHT:
+            return True
+
+        # 撞自身检测
+        if head in self.body[1:]:
+            return True
+
+        return False
+
+    def eat(self):
+        """吃到食物，蛇身增长"""
+        self.grow = True
+
+
+class Food:
+    """食物类"""
+
+    def __init__(self):
+        self.position = (0, 0)
+        self.spawn()
+
+    def spawn(self, snake_body=None):
+        """在随机位置生成食物，避免出现在蛇身上"""
+        while True:
+            x = random.randint(0, GRID_WIDTH - 1)
+            y = random.randint(0, GRID_HEIGHT - 1)
+            if snake_body is None or (x, y) not in snake_body:
+                self.position = (x, y)
+                break
+
+
+class Game:
+    """游戏主类"""
+
+    def __init__(self):
+        self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+        pygame.display.set_caption("贪吃蛇游戏 - Snake Game")
+        self.clock = pygame.time.Clock()
+        self.font_large = get_chinese_font(48)
+        self.font_medium = get_chinese_font(32)
+        self.font_small = get_chinese_font(24)
+        self.snake = Snake()
+        self.food = Food()
+        self.score = 0
+        self.high_score = 0
+        self.state = "MENU"  # MENU, PLAYING, PAUSED, GAME_OVER
+        self.button_rect = None
+
+    def draw_grid(self):
+        """绘制背景网格"""
+        self.screen.fill(COLOR_BG)
+        for x in range(0, SCREEN_WIDTH, CELL_SIZE):
+            pygame.draw.line(self.screen, COLOR_GRID, (x, 40), (x, SCREEN_HEIGHT))
+        for y in range(40, SCREEN_HEIGHT, CELL_SIZE):
+            pygame.draw.line(self.screen, COLOR_GRID, (0, y), (SCREEN_WIDTH, y))
+
+    def draw_snake(self):
+        """绘制蛇"""
+        for i, (x, y) in enumerate(self.snake.body):
+            color = COLOR_SNAKE_HEAD if i == 0 else COLOR_SNAKE_BODY
+            rect = pygame.Rect(
+                x * CELL_SIZE + 2,
+                y * CELL_SIZE + 42,  # 偏移以留出分数显示空间
+                CELL_SIZE - 4,
+                CELL_SIZE - 4
+            )
+            # 绘制圆角矩形
+            pygame.draw.rect(self.screen, color, rect, border_radius=8)
+            # 给蛇头添加眼睛
+            if i == 0:
+                eye_size = 4
+                eye_offset = 6
+                if self.snake.direction == RIGHT:
+                    eye1_pos = (rect.right - eye_offset, rect.top + eye_offset)
+                    eye2_pos = (rect.right - eye_offset, rect.bottom - eye_offset)
+                elif self.snake.direction == LEFT:
+                    eye1_pos = (rect.left + eye_offset, rect.top + eye_offset)
+                    eye2_pos = (rect.left + eye_offset, rect.bottom - eye_offset)
+                elif self.snake.direction == UP:
+                    eye1_pos = (rect.left + eye_offset, rect.top + eye_offset)
+                    eye2_pos = (rect.right - eye_offset, rect.top + eye_offset)
+                else:  # DOWN
+                    eye1_pos = (rect.left + eye_offset, rect.bottom - eye_offset)
+                    eye2_pos = (rect.right - eye_offset, rect.bottom - eye_offset)
+                pygame.draw.circle(self.screen, (255, 255, 255), eye1_pos, eye_size)
+                pygame.draw.circle(self.screen, (255, 255, 255), eye2_pos, eye_size)
+
+    def draw_food(self):
+        """绘制食物"""
+        x, y = self.food.position
+        # 绘制圆形食物
+        center = (
+            x * CELL_SIZE + CELL_SIZE // 2,
+            y * CELL_SIZE + 42 + CELL_SIZE // 2
+        )
+        pygame.draw.circle(self.screen, COLOR_FOOD, center, CELL_SIZE // 2 - 2)
+        # 添加高光效果
+        highlight_pos = (center[0] - 4, center[1] - 4)
+        pygame.draw.circle(self.screen, (255, 150, 150), highlight_pos, 4)
+
+    def draw_score(self):
+        """绘制分数"""
+        score_text = f"得分：{self.score}  |  最高分：{self.high_score}"
+        text_surface = self.font_small.render(score_text, True, COLOR_SCORE)
+        text_rect = text_surface.get_rect(center=(SCREEN_WIDTH // 2, 25))
+        self.screen.blit(text_surface, text_rect)
+
+    def draw_menu(self):
+        """绘制主菜单"""
+        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+        overlay.set_alpha(200)
+        overlay.fill((0, 0, 0))
+        self.screen.blit(overlay, (0, 0))
+
+        # 游戏标题
+        title = self.font_large.render("贪吃蛇游戏", True, COLOR_TEXT)
+        title_rect = title.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 80))
+        self.screen.blit(title, title_rect)
+
+        # 开始按钮
+        self.button_rect = pygame.Rect(
+            SCREEN_WIDTH // 2 - 100,
+            SCREEN_HEIGHT // 2,
+            200,
+            50
+        )
+        mouse_pos = pygame.mouse.get_pos()
+        button_color = COLOR_BUTTON_HOVER if self.button_rect.collidepoint(mouse_pos) else COLOR_BUTTON
+        pygame.draw.rect(self.screen, button_color, self.button_rect, border_radius=10)
+
+        start_text = self.font_medium.render("开始游戏", True, COLOR_TEXT)
+        start_rect = start_text.get_rect(center=self.button_rect.center)
+        self.screen.blit(start_text, start_rect)
+
+        # 操作说明
+        instructions = [
+            "方向键或 WASD 控制移动",
+            "P 键暂停，R 键重新开始",
+            "ESC 键退出"
+        ]
+        for i, inst in enumerate(instructions):
+            inst_surface = self.font_small.render(inst, True, COLOR_TEXT)
+            inst_rect = inst_surface.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 80 + i * 30))
+            self.screen.blit(inst_surface, inst_rect)
+
+    def draw_pause(self):
+        """绘制暂停界面"""
+        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+        overlay.set_alpha(150)
+        overlay.fill((0, 0, 0))
+        self.screen.blit(overlay, (0, 0))
+
+        pause_text = self.font_large.render("游戏暂停", True, COLOR_TEXT)
+        text_rect = pause_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2))
+        self.screen.blit(pause_text, text_rect)
+
+        continue_text = self.font_small.render("按 P 键继续", True, COLOR_TEXT)
+        continue_rect = continue_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 50))
+        self.screen.blit(continue_text, continue_rect)
+
+    def draw_game_over(self):
+        """绘制游戏结束界面"""
+        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+        overlay.set_alpha(200)
+        overlay.fill((0, 0, 0))
+        self.screen.blit(overlay, (0, 0))
+
+        game_over_text = self.font_large.render("游戏结束", True, (255, 100, 100))
+        game_over_rect = game_over_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 60))
+        self.screen.blit(game_over_text, game_over_rect)
+
+        score_text = self.font_medium.render(f"最终得分：{self.score}", True, COLOR_TEXT)
+        score_rect = score_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2))
+        self.screen.blit(score_text, score_rect)
+
+        restart_text = self.font_small.render("按 R 键重新开始 或 点击按钮", True, COLOR_TEXT)
+        restart_rect = restart_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 50))
+        self.screen.blit(restart_text, restart_rect)
+
+        # 重新开始按钮
+        self.button_rect = pygame.Rect(
+            SCREEN_WIDTH // 2 - 100,
+            SCREEN_HEIGHT // 2 + 80,
+            200,
+            50
+        )
+        mouse_pos = pygame.mouse.get_pos()
+        button_color = COLOR_BUTTON_HOVER if self.button_rect.collidepoint(mouse_pos) else COLOR_BUTTON
+        pygame.draw.rect(self.screen, button_color, self.button_rect, border_radius=10)
+
+        restart_btn_text = self.font_medium.render("重新开始", True, COLOR_TEXT)
+        restart_btn_rect = restart_btn_text.get_rect(center=self.button_rect.center)
+        self.screen.blit(restart_btn_text, restart_btn_rect)
+
+    def handle_events(self):
+        """处理事件"""
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return False
+
+            if event.type == pygame.KEYDOWN:
+                if self.state == "MENU":
+                    if event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
+                        self.start_game()
+
+                elif self.state == "PLAYING":
+                    if event.key in (pygame.K_UP, pygame.K_w):
+                        self.snake.change_direction(UP)
+                    elif event.key in (pygame.K_DOWN, pygame.K_s):
+                        self.snake.change_direction(DOWN)
+                    elif event.key in (pygame.K_LEFT, pygame.K_a):
+                        self.snake.change_direction(LEFT)
+                    elif event.key in (pygame.K_RIGHT, pygame.K_d):
+                        self.snake.change_direction(RIGHT)
+                    elif event.key == pygame.K_p:
+                        self.state = "PAUSED"
+                    elif event.key == pygame.K_ESCAPE:
+                        self.state = "MENU"
+
+                elif self.state == "PAUSED":
+                    if event.key == pygame.K_p:
+                        self.state = "PLAYING"
+                    elif event.key == pygame.K_ESCAPE:
+                        self.state = "MENU"
+
+                elif self.state == "GAME_OVER":
+                    if event.key == pygame.K_r:
+                        self.start_game()
+                    elif event.key == pygame.K_ESCAPE:
+                        self.state = "MENU"
+
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                mouse_pos = pygame.mouse.get_pos()
+                if self.button_rect and self.button_rect.collidepoint(mouse_pos):
+                    if self.state == "MENU":
+                        self.start_game()
+                    elif self.state == "GAME_OVER":
+                        self.start_game()
+
+        return True
+
+    def start_game(self):
+        """开始新游戏"""
+        self.snake.reset()
+        self.food.spawn(self.snake.body)
+        self.score = 0
+        self.state = "PLAYING"
+
+    def update(self):
+        """更新游戏状态"""
+        if self.state != "PLAYING":
+            return
+
+        self.snake.update()
+
+        # 检测吃食物
+        if self.snake.body[0] == self.food.position:
+            self.snake.eat()
+            self.score += 10
+            if self.score > self.high_score:
+                self.high_score = self.score
+            self.food.spawn(self.snake.body)
+
+        # 检测碰撞
+        if self.snake.check_collision():
+            self.state = "GAME_OVER"
+
+    def draw(self):
+        """绘制游戏画面"""
+        self.draw_grid()
+        self.draw_score()
+        self.draw_food()
+        self.draw_snake()
+
+        if self.state == "MENU":
+            self.draw_menu()
+        elif self.state == "PAUSED":
+            self.draw_pause()
+        elif self.state == "GAME_OVER":
+            self.draw_game_over()
+
+        pygame.display.flip()
+
+    def run(self):
+        """运行游戏主循环"""
+        running = True
+        while running:
+            running = self.handle_events()
+            self.update()
+            self.draw()
+            self.clock.tick(FPS)
+
+        pygame.quit()
+        sys.exit()
+
+
+def main():
+    """主函数"""
+    game = Game()
+    game.run()
+
+
+if __name__ == "__main__":
+    main()
