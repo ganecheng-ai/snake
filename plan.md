@@ -51,12 +51,13 @@ snake/
 ```
 
 ## 项目状态
-- **当前版本**: v1.2.3
+- **当前版本**: v1.2.4
 - **状态**: 稳定运行
 - **最近更新时间**: 2026-03-12
-- **最新检查**: 2026-03-12 - 修复 GitHub Release 权限问题，添加 workflow permissions 配置
+- **最新检查**: 2026-03-12 - 修复音效生成算法，使用正确的正弦波公式
 
 ## 版本历史
+- v1.2.4: 修复音效生成算法，使用正确的正弦波公式
 - v1.2.3: 修复 GitHub Release 权限问题，添加 workflow permissions 配置
 - v1.2.2: 升级 GitHub Actions 到最新版本以消除 Node.js 20 弃用警告
 - v1.2.1: 修复 GitHub Actions macOS 构建顺序问题

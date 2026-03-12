@@ -9,6 +9,7 @@ import random
 import sys
 import json
 import os
+import math
 
 # 初始化 pygame
 pygame.init()
@@ -117,7 +118,8 @@ class SoundManager:
         samples = []
         for i in range(n_samples):
             t = i / sample_rate
-            value = int(32767 * 0.3 * (1 - i/n_samples) * (0.5 + 0.5 * (2 * 3.14159 * 880 * t)))
+            # 使用正弦波生成高音滴声
+            value = int(32767 * 0.3 * (1 - i/n_samples) * math.sin(2 * math.pi * 880 * t))
             samples.append(max(-32768, min(32767, value)))
         return pygame.sndarray.make_sound(pygame.sndarray.array(samples))
 
@@ -146,8 +148,9 @@ class SoundManager:
         samples = []
         for i in range(n_samples):
             t = i / sample_rate
+            # 频率从440Hz下降到200Hz
             freq = 440 * (1 - t/duration) + 200
-            value = int(32767 * 0.3 * (1 - i/n_samples) * (2 * 3.14159 * freq * t))
+            value = int(32767 * 0.3 * (1 - i/n_samples) * math.sin(2 * math.pi * freq * t))
             samples.append(max(-32768, min(32767, value)))
         return pygame.sndarray.make_sound(pygame.sndarray.array(samples))
 
@@ -161,7 +164,8 @@ class SoundManager:
         samples = []
         for i in range(n_samples):
             t = i / sample_rate
-            value = int(32767 * 0.3 * (2 * 3.14159 * 1200 * t))
+            # 使用正弦波生成清脆短音
+            value = int(32767 * 0.3 * math.sin(2 * math.pi * 1200 * t))
             samples.append(max(-32768, min(32767, value)))
         return pygame.sndarray.make_sound(pygame.sndarray.array(samples))
 
