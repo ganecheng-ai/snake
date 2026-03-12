@@ -48,6 +48,29 @@ DOWN = (0, 1)
 LEFT = (-1, 0)
 RIGHT = (1, 0)
 
+# 数据持久化相关
+DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "snake_data.json")
+
+
+def load_game_data():
+    """加载游戏数据"""
+    try:
+        if os.path.exists(DATA_FILE):
+            with open(DATA_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception as e:
+        print(f"加载数据失败：{e}")
+    return {"high_score": 0}
+
+
+def save_game_data(data):
+    """保存游戏数据"""
+    try:
+        with open(DATA_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"保存数据失败：{e}")
+
 # 中文字体（尝试使用系统字体）
 CHINESE_FONTS = [
     'SimHei',           # 黑体 (Windows)
@@ -611,27 +634,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-# 数据持久化相关
-DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "snake_data.json")
-
-
-def load_game_data():
-    """加载游戏数据"""
-    try:
-        if os.path.exists(DATA_FILE):
-            with open(DATA_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-    except Exception as e:
-        print(f"加载数据失败：{e}")
-    return {"high_score": 0}
-
-
-def save_game_data(data):
-    """保存游戏数据"""
-    try:
-        with open(DATA_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        print(f"保存数据失败：{e}")
