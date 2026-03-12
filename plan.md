@@ -51,12 +51,13 @@ snake/
 ```
 
 ## 项目状态
-- **当前版本**: v1.2.2
+- **当前版本**: v1.2.3
 - **状态**: 稳定运行
 - **最近更新时间**: 2026-03-12
-- **最新检查**: 2026-03-12 - GitHub Actions 构建成功，无 open issues，代码语法测试通过
+- **最新检查**: 2026-03-12 - 修复 GitHub Release 权限问题，添加 workflow permissions 配置
 
 ## 版本历史
+- v1.2.3: 修复 GitHub Release 权限问题，添加 workflow permissions 配置
 - v1.2.2: 升级 GitHub Actions 到最新版本以消除 Node.js 20 弃用警告
 - v1.2.1: 修复 GitHub Actions macOS 构建顺序问题
 - v1.2.0: 添加音效支持和难度选择功能，添加食物脉冲特效
